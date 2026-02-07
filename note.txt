@@ -3,3 +3,14 @@ mkdir -p build
 cd build
 cmake ..
 cmake --build . -j
+
+
+RUN TEST:
+./txn_framework \
+  --input ../input1.txt \
+  --workload ../workload1.txt \
+  --storage rocksdb --db_path ./db_run1 \
+  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20
+
+
+remove rocksdb path after every test.
