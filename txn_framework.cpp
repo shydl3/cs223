@@ -10,11 +10,18 @@
 #include <random>
 #include <regex>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+// ---- RocksDB ----
+#include <rocksdb/db.h>
+#include <rocksdb/options.h>
+#include <rocksdb/iterator.h>
+#include <rocksdb/slice.h>
 
 using Clock = std::chrono::steady_clock;
 
@@ -23,7 +30,6 @@ static inline std::string strip_comment(std::string s) {
   if (cut != std::string::npos) s = s.substr(0, cut);
   cut = s.find("//");
   if (cut != std::string::npos) s = s.substr(0, cut);
-  // trim
   auto l = s.find_first_not_of(" \t\r\n");
   if (l == std::string::npos) return "";
   auto r = s.find_last_not_of(" \t\r\n");
@@ -36,7 +42,7 @@ static inline std::string to_upper(std::string s) {
 }
 
 // ----------------------------
-// Record & Storage
+// Record
 // ----------------------------
 
 struct Record {
@@ -44,13 +50,49 @@ struct Record {
   int64_t balance{0};
 };
 
+// Simple encoding: name \t balance
+static inline std::string encode_record(const Record &r) {
+  // If you worry about '\t' in name, escape it. Your sample names don't contain it.
+  return r.name + "\t" + std::to_string(r.balance);
+}
+
+static inline std::optional<Record> decode_record(const std::string &s) {
+  auto pos = s.rfind('\t');
+  if (pos == std::string::npos) return std::nullopt;
+  Record r;
+  r.name = s.substr(0, pos);
+  try {
+    r.balance = std::stoll(s.substr(pos + 1));
+  } catch (...) {
+    return std::nullopt;
+  }
+  return r;
+}
+
+// ----------------------------
+// Storage interface
+// ----------------------------
+
 class Storage {
 public:
   virtual ~Storage() = default;
   virtual std::optional<Record> get(const std::string &key) = 0;
   virtual void put(const std::string &key, const Record &value) = 0;
+
+  // Used for key selection & hotset building
   virtual std::vector<std::string> keys() = 0;
+
+  // For sanity checking invariants
+  virtual int64_t total_balance() = 0;
+
+  virtual void bulk_load(const std::unordered_map<std::string, Record> &items) {
+    for (auto &kv : items) put(kv.first, kv.second);
+  }
 };
+
+// ----------------------------
+// In-memory storage (for dev)
+// ----------------------------
 
 class InMemoryStorage final : public Storage {
 public:
@@ -58,12 +100,12 @@ public:
     std::lock_guard<std::mutex> g(mu_);
     auto it = data_.find(key);
     if (it == data_.end()) return std::nullopt;
-    return it->second; // copy
+    return it->second;
   }
 
   void put(const std::string &key, const Record &value) override {
     std::lock_guard<std::mutex> g(mu_);
-    data_[key] = value; // copy
+    data_[key] = value;
   }
 
   std::vector<std::string> keys() override {
@@ -71,20 +113,20 @@ public:
     std::vector<std::string> ks;
     ks.reserve(data_.size());
     for (auto &kv : data_) ks.push_back(kv.first);
-    std::sort(ks.begin(), ks.end()); // deterministic
+    std::sort(ks.begin(), ks.end());
     return ks;
   }
 
-  void bulk_load(const std::unordered_map<std::string, Record> &items) {
-    std::lock_guard<std::mutex> g(mu_);
-    for (auto &kv : items) data_[kv.first] = kv.second;
-  }
-
-  int64_t total_balance() {
+  int64_t total_balance() override {
     std::lock_guard<std::mutex> g(mu_);
     int64_t sum = 0;
     for (auto &kv : data_) sum += kv.second.balance;
     return sum;
+  }
+
+  void bulk_load(const std::unordered_map<std::string, Record> &items) override {
+    std::lock_guard<std::mutex> g(mu_);
+    for (auto &kv : items) data_[kv.first] = kv.second;
   }
 
 private:
@@ -92,17 +134,98 @@ private:
   std::mutex mu_;
 };
 
-// Placeholder for later
-// class RocksDBStorage : public Storage { ... }
+// ----------------------------
+// RocksDB storage (required)
+// ----------------------------
+
+class RocksDBStorage final : public Storage {
+public:
+  explicit RocksDBStorage(const std::string &db_path, bool create_if_missing = true) {
+    rocksdb::Options options;
+    options.create_if_missing = create_if_missing;
+
+    rocksdb::DB *raw = nullptr;
+    auto st = rocksdb::DB::Open(options, db_path, &raw);
+    if (!st.ok()) {
+      throw std::runtime_error("RocksDB open failed: " + st.ToString());
+    }
+    db_.reset(raw);
+  }
+
+  std::optional<Record> get(const std::string &key) override {
+    std::string val;
+    rocksdb::ReadOptions ro;
+    auto st = db_->Get(ro, key, &val);
+    if (st.IsNotFound()) return std::nullopt;
+    if (!st.ok()) throw std::runtime_error("RocksDB Get failed: " + st.ToString());
+
+    auto rec = decode_record(val);
+    if (!rec.has_value()) {
+      throw std::runtime_error("Failed to decode record for key=" + key);
+    }
+    return rec;
+  }
+
+  void put(const std::string &key, const Record &value) override {
+    rocksdb::WriteOptions wo;
+    auto st = db_->Put(wo, key, encode_record(value));
+    if (!st.ok()) throw std::runtime_error("RocksDB Put failed: " + st.ToString());
+  }
+
+  std::vector<std::string> keys() override {
+    std::vector<std::string> ks;
+    rocksdb::ReadOptions ro;
+    std::unique_ptr<rocksdb::Iterator> it(db_->NewIterator(ro));
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+      ks.push_back(it->key().ToString());
+    }
+    if (!it->status().ok()) {
+      throw std::runtime_error("RocksDB Iterator failed: " + it->status().ToString());
+    }
+    std::sort(ks.begin(), ks.end());  // deterministic hotset
+    return ks;
+  }
+
+  int64_t total_balance() override {
+    int64_t sum = 0;
+    rocksdb::ReadOptions ro;
+    std::unique_ptr<rocksdb::Iterator> it(db_->NewIterator(ro));
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+      auto rec = decode_record(it->value().ToString());
+      if (!rec.has_value()) continue;
+      sum += rec->balance;
+    }
+    if (!it->status().ok()) {
+      throw std::runtime_error("RocksDB Iterator failed: " + it->status().ToString());
+    }
+    return sum;
+  }
+
+  // Optional: clear DB between runs (useful for experiments)
+  void clear_all() {
+    // For speed/simplicity: delete by iterating keys
+    rocksdb::WriteOptions wo;
+    rocksdb::ReadOptions ro;
+    std::unique_ptr<rocksdb::Iterator> it(db_->NewIterator(ro));
+    for (it->SeekToFirst(); it->Valid(); it->Next()) {
+      auto st = db_->Delete(wo, it->key());
+      if (!st.ok()) throw std::runtime_error("RocksDB Delete failed: " + st.ToString());
+    }
+  }
+
+private:
+  struct DBDeleter { void operator()(rocksdb::DB *p) const { delete p; } };
+  std::unique_ptr<rocksdb::DB, DBDeleter> db_;
+};
 
 // ----------------------------
-// Parsing
+// Parsing input/workload (same as before)
 // ----------------------------
 
 // Matches: KEY: A_1, VALUE: {name: "Account-1", balance: 153}
 static const std::regex kKeyRe(R"(KEY:\s*([^,]+)\s*,)", std::regex::icase);
 static const std::regex kValRe(
-    R"(VALUE:\s*\{\s*name:\s*"([^"]+)"\s*,\s*balance:\s*(-?\d+)\s*\}\s*$)",
+    R"VAL(VALUE:\s*\{\s*name:\s*"([^"]+)"\s*,\s*balance:\s*(-?\d+)\s*\}\s*$)VAL",
     std::regex::icase);
 
 std::unordered_map<std::string, Record> parse_insert_file(const std::string &path) {
@@ -127,8 +250,6 @@ std::unordered_map<std::string, Record> parse_insert_file(const std::string &pat
     if (!std::regex_search(line, vm, kValRe)) continue;
 
     std::string key = strip_comment(km[1].str());
-    key = strip_comment(key);
-
     Record rec;
     rec.name = vm[1].str();
     rec.balance = std::stoll(vm[2].str());
@@ -136,9 +257,7 @@ std::unordered_map<std::string, Record> parse_insert_file(const std::string &pat
     items[key] = rec;
   }
 
-  if (items.empty()) {
-    throw std::runtime_error("No INSERT items parsed from: " + path);
-  }
+  if (items.empty()) throw std::runtime_error("No INSERT items parsed from: " + path);
   return items;
 }
 
@@ -149,11 +268,11 @@ static const std::regex kInputsRe(
 
 struct TransactionTemplate {
   std::string name;
-  std::vector<std::string> input_vars; // e.g., ["FROM_KEY", "TO_KEY"]
+  std::vector<std::string> input_vars;
 
   size_t num_inputs() const { return input_vars.size(); }
 
-  // No-CC: sample transfer logic (matches your workload1 semantics)
+  // No-CC: transfer logic (workload1)
   void run(Storage &storage, const std::vector<std::string> &keys) const {
     if (keys.size() != 2) {
       throw std::runtime_error(name + ": expected 2 keys, got " + std::to_string(keys.size()));
@@ -161,11 +280,8 @@ struct TransactionTemplate {
     const std::string &from_k = keys[0];
     const std::string &to_k   = keys[1];
 
-    auto from_opt = storage.get(from_k);
-    auto to_opt   = storage.get(to_k);
-
-    Record from = from_opt.value_or(Record{from_k, 0});
-    Record to   = to_opt.value_or(Record{to_k, 0});
+    Record from = storage.get(from_k).value_or(Record{from_k, 0});
+    Record to   = storage.get(to_k).value_or(Record{to_k, 0});
 
     from.balance -= 1;
     to.balance += 1;
@@ -199,10 +315,7 @@ Workload parse_workload_file(const std::string &path) {
 
     auto u = to_upper(line);
     if (u == "WORKLOAD") { in_workload = true; continue; }
-    if (u == "END") { 
-      // tolerate extra END lines (workload1 sample shows nested END)
-      continue; 
-    }
+    if (u == "END") { continue; } // tolerate extra ENDs
     if (!in_workload) continue;
 
     std::smatch m;
@@ -248,12 +361,8 @@ struct KeyPicker {
     keys.reserve(n);
     for (size_t i = 0; i < n; i++) keys.push_back(src[dist(rng)]);
 
-    // For transfer, avoid FROM==TO when possible
     if (n == 2 && keys[0] == keys[1] && src.size() > 1) {
-      // resample second
-      do {
-        keys[1] = src[dist(rng)];
-      } while (keys[1] == keys[0]);
+      do { keys[1] = src[dist(rng)]; } while (keys[1] == keys[0]);
     }
     return keys;
   }
@@ -324,7 +433,7 @@ void worker_loop(
   }
 }
 
-Stats run_benchmark(InMemoryStorage &storage, const Workload &wl, const RunConfig &cfg) {
+Stats run_benchmark(Storage &storage, const Workload &wl, const RunConfig &cfg) {
   auto all_keys = storage.keys();
   if (all_keys.empty()) throw std::runtime_error("Empty keyspace after load.");
 
@@ -367,12 +476,15 @@ static void usage(const char *prog) {
   std::cerr
     << "Usage:\n  " << prog
     << " --input input1.txt --workload workload1.txt"
+    << " --storage inmem|rocksdb --db_path <path>"
     << " [--threads N] [--duration S] [--p_hot P] [--hotset_size K] [--seed SEED]\n";
 }
 
 int main(int argc, char **argv) {
   std::string input_path;
   std::string workload_path;
+  std::string storage_mode = "inmem";
+  std::string db_path = "./rocksdb_data";
   RunConfig cfg;
 
   for (int i = 1; i < argc; i++) {
@@ -384,6 +496,8 @@ int main(int argc, char **argv) {
 
     if (a == "--input") input_path = need(a);
     else if (a == "--workload") workload_path = need(a);
+    else if (a == "--storage") storage_mode = need(a);
+    else if (a == "--db_path") db_path = need(a);
     else if (a == "--threads") cfg.threads = std::stoi(need(a));
     else if (a == "--duration") cfg.duration_s = std::stod(need(a));
     else if (a == "--p_hot") cfg.p_hot = std::stod(need(a));
@@ -402,18 +516,32 @@ int main(int argc, char **argv) {
   }
   if (cfg.threads <= 0) throw std::runtime_error("threads must be > 0");
   if (cfg.p_hot < 0.0 || cfg.p_hot > 1.0) throw std::runtime_error("p_hot must be in [0,1]");
+  if (storage_mode != "inmem" && storage_mode != "rocksdb") {
+    throw std::runtime_error("--storage must be inmem or rocksdb");
+  }
 
   try {
     auto items = parse_insert_file(input_path);
     auto wl = parse_workload_file(workload_path);
 
-    InMemoryStorage storage;
-    storage.bulk_load(items);
+    std::unique_ptr<Storage> storage;
 
-    int64_t before_total = storage.total_balance();
+    if (storage_mode == "inmem") {
+      auto s = std::make_unique<InMemoryStorage>();
+      s->bulk_load(items);
+      storage = std::move(s);
+    } else {
+      auto s = std::make_unique<RocksDBStorage>(db_path, /*create_if_missing=*/true);
+      // If you want clean runs each time, uncomment:
+      // s->clear_all();
+      s->bulk_load(items);
+      storage = std::move(s);
+    }
+
+    int64_t before_total = storage->total_balance();
 
     auto wall0 = Clock::now();
-    Stats stats = run_benchmark(storage, wl, cfg);
+    Stats stats = run_benchmark(*storage, wl, cfg);
     auto wall1 = Clock::now();
 
     double elapsed = std::chrono::duration<double>(wall1 - wall0).count();
@@ -424,11 +552,13 @@ int main(int argc, char **argv) {
     double p95 = percentile(stats.latencies_s, 0.95);
     double p99 = percentile(stats.latencies_s, 0.99);
 
-    int64_t after_total = storage.total_balance();
+    int64_t after_total = storage->total_balance();
 
-    std::cout << "==== Benchmark (C++ NO CC, sample-transfer workload) ====\n";
+    std::cout << "==== Benchmark (C++ NO CC, RocksDB-capable) ====\n";
     std::cout << "Input:    " << input_path << "\n";
     std::cout << "Workload: " << workload_path << "\n";
+    std::cout << "Storage:  " << storage_mode << "\n";
+    if (storage_mode == "rocksdb") std::cout << "DB path:  " << db_path << "\n";
     std::cout << "Threads:  " << cfg.threads << "\n";
     std::cout << "Duration: " << cfg.duration_s << "s (wall=" << std::fixed << std::setprecision(3) << elapsed << "s)\n";
     std::cout << "Contention: p_hot=" << cfg.p_hot << ", hotset_size=" << cfg.hotset_size << "\n";
@@ -440,7 +570,7 @@ int main(int argc, char **argv) {
               << (p50 * 1000.0) << " / " << (p95 * 1000.0) << " / " << (p99 * 1000.0) << "\n";
 
     std::cout << "Total balance sanity (before -> after): " << before_total << " -> " << after_total << "\n";
-    std::cout << "NOTE: without CC, total balance might drift under races.\n";
+    std::cout << "NOTE: without CC, total balance may drift under races.\n";
 
   } catch (const std::exception &e) {
     std::cerr << "ERROR: " << e.what() << "\n";
@@ -449,4 +579,3 @@ int main(int argc, char **argv) {
 
   return 0;
 }
-
