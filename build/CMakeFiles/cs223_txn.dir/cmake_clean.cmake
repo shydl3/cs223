@@ -1,0 +1,43 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/cs223_txn.dir/src/bench/reporter.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/bench/reporter.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/bench/runner.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/bench/runner.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/common/stats.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/common/stats.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/main.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/main.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/storage/codec.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/storage/codec.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/storage/inmem_storage.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/storage/inmem_storage.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/storage/rocksdb_storage.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/storage/rocksdb_storage.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/c2pl.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/c2pl.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/lock_manager.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/lock_manager.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/no_cc.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/no_cc.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/occ.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/cc/occ.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/txn_api.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/txn_api.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/txn/txn_manager.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/txn/txn_manager.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/workload/loader.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/workload/loader.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/workload/picker.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/workload/picker.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/workload/w1_transfer.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/workload/w1_transfer.cpp.o.d"
+  "CMakeFiles/cs223_txn.dir/src/workload/w2_tpccmini.cpp.o"
+  "CMakeFiles/cs223_txn.dir/src/workload/w2_tpccmini.cpp.o.d"
+  "cs223_txn"
+  "cs223_txn.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/cs223_txn.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

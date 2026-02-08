@@ -1,0 +1,3 @@
+/home/svint/cs223/build/CMakeFiles/cs223_txn.dir
+/home/svint/cs223/build/CMakeFiles/edit_cache.dir
+/home/svint/cs223/build/CMakeFiles/rebuild_cache.dir

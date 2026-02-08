@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/txn_framework.dir/txn_framework.cpp.o -o txn_framework  -lrocksdb 

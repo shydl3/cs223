@@ -1,0 +1,2 @@
+workload,cc,threads,duration_s,p_hot,hotset_size,committed,aborted,retries,throughput_tps,avg_latency_ms,p50_ms,p95_ms,p99_ms,balance_before,balance_after
+workload1_transfer,no_cc,8,5,0.8,20,282041,0,0,56370.7,0.141531,0.078578,0.436517,0.730604,270451,269959
