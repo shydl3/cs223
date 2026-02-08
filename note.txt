@@ -1,17 +1,32 @@
 编译:
-mkdir -p build
-cd build
-cmake ..
-cmake --build . -j
-
+cd /home/svint/cs223
+cmake -S . -B build && cmake --build build -j
 
 RUN TEST:
-./txn_framework \
-  --input ../data/input1.txt \
-  --workload ..data//workload1.txt \
-  --storage rocksdb --db_path ./db_run1 \
+workload1（NoCC）
+./build/cs223_txn \
+  --input data/workload1/input1.txt \
+  --workload data/workload1/workload1.txt \
+  --workload_name w1 \
+  --storage rocksdb \
+  --db_path ./build/db_run1 \
+  --cc no_cc \
+  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20 \
+  --csv ./build/result_w1.csv
+
+
+workload2（NoCC）
+./build/cs223_txn \
+  --input data/workload2/input2.txt \
+  --workload data/workload2/workload2.txt \
+  --workload_name w2 \
+  --storage rocksdb \
+  --db_path ./build/db_run2 \
+  --cc no_cc \
   --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20
 
 
-remove rocksdb path after every test:
-rm -rf db_run1/
+
+REMOVE db path after every test:
+rm -rf build/db_run1/
+
