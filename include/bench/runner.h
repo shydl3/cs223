@@ -1,6 +1,8 @@
 #pragma once
 
 #include <atomic>
+#include <string>
+#include <unordered_map>
 
 #include "common/config.h"
 #include "common/stats.h"
@@ -11,6 +13,7 @@ namespace cs223::bench {
 
 struct RunResult {
   cs223::common::TxnStats stats;
+  std::unordered_map<std::string, cs223::common::TxnStats> template_stats;
   double wall_time_s = 0.0;
 };
 

@@ -2,6 +2,7 @@
 
 #include <random>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include "common/random.h"
@@ -14,6 +15,7 @@ RunResult RunBenchmark(const cs223::common::RunConfig& cfg, cs223::workload::Wor
   std::atomic<bool> stop{false};
   std::vector<std::thread> workers;
   std::vector<cs223::common::TxnStats> local(cfg.threads);
+  std::vector<std::unordered_map<std::string, cs223::common::TxnStats>> local_by_template(cfg.threads);
 
   const auto& templates = workload.Templates();
   const auto wall_start = cs223::common::SteadyClock::now();
@@ -27,14 +29,22 @@ RunResult RunBenchmark(const cs223::common::RunConfig& cfg, cs223::workload::Wor
         const auto& tp = templates[tdist(rng)];
         const auto keys = tp.pick_keys(picker, rng);
         auto exec = txn_manager.Execute([&](cs223::txn::TxnContext& txn) { return tp.run(txn, keys); }, keys, rng);
+        local[tid].AddResponse(exec.latency_s);
+        local_by_template[tid][tp.name].AddResponse(exec.latency_s);
         local[tid].AddLockConflicts(exec.lock_conflicts);
         local[tid].AddValidationConflicts(exec.validation_conflicts);
+        local_by_template[tid][tp.name].AddLockConflicts(exec.lock_conflicts);
+        local_by_template[tid][tp.name].AddValidationConflicts(exec.validation_conflicts);
         if (exec.committed) {
           local[tid].AddCommit(exec.latency_s);
           local[tid].AddRetries(exec.retries);
+          local_by_template[tid][tp.name].AddCommit(exec.latency_s);
+          local_by_template[tid][tp.name].AddRetries(exec.retries);
         } else {
           local[tid].AddAbort();
           local[tid].AddRetries(exec.retries);
+          local_by_template[tid][tp.name].AddAbort();
+          local_by_template[tid][tp.name].AddRetries(exec.retries);
         }
       }
     });
@@ -50,6 +60,11 @@ RunResult RunBenchmark(const cs223::common::RunConfig& cfg, cs223::workload::Wor
   RunResult result;
   for (const auto& s : local) {
     result.stats.Merge(s);
+  }
+  for (const auto& per_thread : local_by_template) {
+    for (const auto& kv : per_thread) {
+      result.template_stats[kv.first].Merge(kv.second);
+    }
   }
 
   const auto wall_end = cs223::common::SteadyClock::now();

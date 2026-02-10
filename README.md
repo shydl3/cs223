@@ -11,7 +11,7 @@ cmake ..
 cmake --build . -j
 ```
 
-## Run (NoCC)
+## Run (OCC / C2PL)
 
 ### workload1
 
@@ -21,7 +21,7 @@ cmake --build . -j
   --workload ../data/workload1/workload1.txt \
   --workload_name w1 \
   --storage inmem \
-  --cc no_cc \
+  --cc occ \
   --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20
 ```
 
@@ -33,14 +33,31 @@ cmake --build . -j
   --workload ../data/workload2/workload2.txt \
   --workload_name w2 \
   --storage inmem \
-  --cc no_cc \
+  --cc c2pl \
   --threads 8 --duration 5 --p_hot 0.8 --hotset_size 50
 ```
 
-## CC 插件
+## CC 插件状态
 
-- `no_cc`: 已实现
-- `occ`: 预留接口（当前为占位 stub）
-- `c2pl`: 预留接口（当前为占位 stub）
+- `no_cc`: baseline
+- `occ`: 已实现（顺序验证 + 私有写集提交）
+- `c2pl`: 已实现（Conservative 2PL，执行前预申请全锁）
 
-后续实现 OCC/C2PL 时，仅需替换 `src/txn/cc/*.cpp`，无需改 workload 与 storage。
+## 指标输出
+
+控制台与 CSV 包含：
+- committed / aborted / retries
+- abort_rate / retry_per_commit
+- lock_conflicts / validation_conflicts
+- throughput_tps
+- avg_commit_latency_ms
+- avg_response_latency_ms + p50/p95/p99 response latency
+- per-template response latency 分布统计
+
+## 一键实验（生成作图数据）
+
+```bash
+./scripts/run_experiments.sh
+```
+
+输出目录：`build/exp/`

@@ -12,9 +12,12 @@ struct TxnStats {
   std::uint64_t lock_conflicts = 0;
   std::uint64_t validation_conflicts = 0;
   double total_commit_latency_s = 0.0;
+  double total_response_latency_s = 0.0;
   std::vector<double> commit_latencies_s;
+  std::vector<double> response_latencies_s;
 
   void AddCommit(double latency_s);
+  void AddResponse(double latency_s);
   void AddAbort();
   void AddRetries(std::uint32_t retry_count);
   void AddLockConflicts(std::uint32_t count);

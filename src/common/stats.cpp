@@ -10,6 +10,11 @@ void TxnStats::AddCommit(double latency_s) {
   commit_latencies_s.push_back(latency_s);
 }
 
+void TxnStats::AddResponse(double latency_s) {
+  total_response_latency_s += latency_s;
+  response_latencies_s.push_back(latency_s);
+}
+
 void TxnStats::AddAbort() {
   ++aborted;
 }
@@ -33,7 +38,9 @@ void TxnStats::Merge(const TxnStats& other) {
   lock_conflicts += other.lock_conflicts;
   validation_conflicts += other.validation_conflicts;
   total_commit_latency_s += other.total_commit_latency_s;
+  total_response_latency_s += other.total_response_latency_s;
   commit_latencies_s.insert(commit_latencies_s.end(), other.commit_latencies_s.begin(), other.commit_latencies_s.end());
+  response_latencies_s.insert(response_latencies_s.end(), other.response_latencies_s.begin(), other.response_latencies_s.end());
 }
 
 double Percentile(std::vector<double> values, double q) {
