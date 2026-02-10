@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <algorithm>
 #include <vector>
 
 #include "common/stats.h"
@@ -58,9 +59,16 @@ void PrintReport(const cs223::common::RunConfig& cfg, const std::string& workloa
   std::cout << "response_latency_ms avg=" << overall.avg_response_latency_ms << " p50=" << overall.response_p50_ms
             << " p95=" << overall.response_p95_ms << " p99=" << overall.response_p99_ms << "\n";
   std::cout << "per_template_response:\n";
+  std::vector<std::string> template_names;
+  template_names.reserve(result.template_stats.size());
   for (const auto& kv : result.template_stats) {
-    const auto per = ComputeDerived(kv.second, result.wall_time_s);
-    std::cout << "  template=" << kv.first << " committed=" << kv.second.committed << " aborted=" << kv.second.aborted
+    template_names.push_back(kv.first);
+  }
+  std::sort(template_names.begin(), template_names.end());
+  for (const auto& name : template_names) {
+    const auto& stats = result.template_stats.at(name);
+    const auto per = ComputeDerived(stats, result.wall_time_s);
+    std::cout << "  template=" << name << " committed=" << stats.committed << " aborted=" << stats.aborted
               << " avg_ms=" << per.avg_response_latency_ms << " p50_ms=" << per.response_p50_ms
               << " p95_ms=" << per.response_p95_ms << " p99_ms=" << per.response_p99_ms << "\n";
   }
@@ -89,12 +97,19 @@ void WriteCsv(const std::string& path, const cs223::common::RunConfig& cfg, cons
       << overall.response_p95_ms << ',' << overall.response_p99_ms << ',' << before_balance << ','
       << after_balance << '\n';
 
+  std::vector<std::string> template_names;
+  template_names.reserve(result.template_stats.size());
   for (const auto& kv : result.template_stats) {
-    const auto per = ComputeDerived(kv.second, result.wall_time_s);
-    out << "template," << kv.first << ',' << workload_name << ',' << cc_name << ',' << cfg.threads << ','
-        << cfg.duration_s << ',' << cfg.p_hot << ',' << cfg.hotset_size << ',' << kv.second.committed << ','
-        << kv.second.aborted << ',' << kv.second.retries << ',' << per.abort_rate << ',' << per.retry_per_commit
-        << ',' << kv.second.lock_conflicts << ',' << kv.second.validation_conflicts << ',' << per.throughput_tps << ','
+    template_names.push_back(kv.first);
+  }
+  std::sort(template_names.begin(), template_names.end());
+  for (const auto& name : template_names) {
+    const auto& stats = result.template_stats.at(name);
+    const auto per = ComputeDerived(stats, result.wall_time_s);
+    out << "template," << name << ',' << workload_name << ',' << cc_name << ',' << cfg.threads << ','
+        << cfg.duration_s << ',' << cfg.p_hot << ',' << cfg.hotset_size << ',' << stats.committed << ','
+        << stats.aborted << ',' << stats.retries << ',' << per.abort_rate << ',' << per.retry_per_commit
+        << ',' << stats.lock_conflicts << ',' << stats.validation_conflicts << ',' << per.throughput_tps << ','
         << per.avg_commit_latency_ms << ',' << per.avg_response_latency_ms << ',' << per.response_p50_ms << ','
         << per.response_p95_ms << ',' << per.response_p99_ms << ",,\n";
   }

@@ -1,16 +1,26 @@
 .vscode/
+.idea/
 build/
 rocksdb_data/
+cmake-build-*/
+compile_commands.json
+Testing/
 
 # experiment outputs
 build/exp/
 *.csv
+*.log
 
 # build artifacts
 *.o
 *.a
 *.so
 *.out
+*.swp
+*.tmp
+
+# local files
+
 
 # macOS
 .DS_Store

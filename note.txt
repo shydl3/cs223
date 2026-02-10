@@ -1,32 +1,37 @@
-编译:
+COMPILE:
 cd /home/svint/cs223
 cmake -S . -B build && cmake --build build -j
 
+
+
 RUN TEST:
-workload1（NoCC）
+workload1（--cc c2pl / occ for CC options）
 ./build/cs223_txn \
   --input data/workload1/input1.txt \
   --workload data/workload1/workload1.txt \
   --workload_name w1 \
   --storage rocksdb \
-  --db_path ./build/db_run1 \
-  --cc no_cc \
-  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20 \
-  --csv ./build/result_w1.csv
+  --cc c2pl \
+  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 50 \
+  --max_retries 16 --backoff_us 100 \
+  --csv build/result1.csv
 
-
-workload2（NoCC）
+workload2（--cc c2pl / occ for CC options）
 ./build/cs223_txn \
   --input data/workload2/input2.txt \
   --workload data/workload2/workload2.txt \
   --workload_name w2 \
   --storage rocksdb \
-  --db_path ./build/db_run2 \
-  --cc no_cc \
-  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 20
+  --cc c2pl \
+  --threads 8 --duration 5 --p_hot 0.8 --hotset_size 50 \
+  --max_retries 16 --backoff_us 100 \
+  --csv build/result2.csv
+
+
 
 
 
 REMOVE db path after every test:
 rm -rf build/db_run1/
 
+./scripts/run_experiments.sh
