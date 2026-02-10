@@ -18,10 +18,20 @@ void TxnStats::AddRetries(std::uint32_t retry_count) {
   retries += retry_count;
 }
 
+void TxnStats::AddLockConflicts(std::uint32_t count) {
+  lock_conflicts += count;
+}
+
+void TxnStats::AddValidationConflicts(std::uint32_t count) {
+  validation_conflicts += count;
+}
+
 void TxnStats::Merge(const TxnStats& other) {
   committed += other.committed;
   aborted += other.aborted;
   retries += other.retries;
+  lock_conflicts += other.lock_conflicts;
+  validation_conflicts += other.validation_conflicts;
   total_commit_latency_s += other.total_commit_latency_s;
   commit_latencies_s.insert(commit_latencies_s.end(), other.commit_latencies_s.begin(), other.commit_latencies_s.end());
 }

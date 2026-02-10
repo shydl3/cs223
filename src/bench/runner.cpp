@@ -26,7 +26,9 @@ RunResult RunBenchmark(const cs223::common::RunConfig& cfg, cs223::workload::Wor
       while (!stop.load(std::memory_order_relaxed)) {
         const auto& tp = templates[tdist(rng)];
         const auto keys = tp.pick_keys(picker, rng);
-        auto exec = txn_manager.Execute([&](cs223::txn::TxnContext& txn) { return tp.run(txn, keys); }, rng);
+        auto exec = txn_manager.Execute([&](cs223::txn::TxnContext& txn) { return tp.run(txn, keys); }, keys, rng);
+        local[tid].AddLockConflicts(exec.lock_conflicts);
+        local[tid].AddValidationConflicts(exec.validation_conflicts);
         if (exec.committed) {
           local[tid].AddCommit(exec.latency_s);
           local[tid].AddRetries(exec.retries);

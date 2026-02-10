@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <random>
+#include <vector>
 
 #include "txn/cc/cc.h"
 #include "txn/txn_api.h"
@@ -18,6 +19,8 @@ struct TxnManagerOptions {
 struct ExecuteResult {
   bool committed = false;
   std::uint32_t retries = 0;
+  std::uint32_t lock_conflicts = 0;
+  std::uint32_t validation_conflicts = 0;
   double latency_s = 0.0;
 };
 
@@ -27,7 +30,7 @@ class TxnManager {
 
   TxnManager(cs223::storage::Storage& storage, cc::CCStrategy& cc, TxnManagerOptions options);
 
-  ExecuteResult Execute(const TxnBody& body, std::mt19937_64& rng);
+  ExecuteResult Execute(const TxnBody& body, const std::vector<std::string>& planned_keys, std::mt19937_64& rng);
 
  private:
   cs223::storage::Storage& storage_;

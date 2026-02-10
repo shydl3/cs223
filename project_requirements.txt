@@ -1,0 +1,71 @@
+4. Concurrency Control Protocols 
+You must implement both CC modes (OCC and 2PL) and support switching between them. 
+4.1 Optimistic Concurrency Control (OCC) 
+In OCC: 
+●  Transactions execute without acquiring locks during their read/write phase. 
+●  Writes are buffered privately and applied only if the transaction commits. 
+●  At commit time, the system validates whether the transaction conflicts with other 
+concurrent transactions. 
+●  In your implementation, you may support only sequential validation. If a transaction (T_1) 
+is validating and another transaction (T_2) attempts to validate concurrently, it must wait 
+until T_1 finishes. 
+●  If validation fails, the transaction aborts and is retried after a waiting period.
+
+
+4.2 Conservative Two-Phase Locking (Conservative 2PL) 
+In Conservative 2PL: 
+●  Transactions must determine all keys they will access before executing. 
+●  Each transaction attempts to acquire all required locks at the start. 
+●  If a transaction requests a lock that is currently being held by another transaction, it 
+releases all the locks it holds and retries acquiring locks after a small wait. The retry 
+frequency and strategy are up to you. 
+●  All locks are released when the transaction completes. 
+●   Note that since no transaction holds locks while waiting for others, deadlocks are 
+impossible. However, livelocks may occur, and you must still address livelocks using the 
+techniques discussed in class.  
+●  To keep the project simple: 
+	Use only one lock type (e.g., exclusive-only locking for all accesses)
+
+
+5. Workloads and Parameters 
+You will be provided with multiple workloads of different sizes and transaction templates. 
+Each workload run must support the following parameters: 
+(A) Contention Level 
+This parameter controls how likely different transactions are to access overlapping keys. 
+Use a hotset of keys such that: 
+●  With probability p, each transaction selects keys from a small hotset (high contention) 
+●  With probability 1 - p, it selects keys uniformly from the full keyspace (low contention)
+As you increase p or shrink the hotset size, contention increases. The number of hot keys 
+should be configurable as a parameter. 
+(B) Number of Threads 
+This parameter controls parallelism: 
+●  More threads → more concurrency → higher throughput potential, but also more 
+conflicts/lock waiting
+
+
+6. Experiments and Performance Metrics 
+You are free to design your own experiments, but your results must include the following. 
+ 
+6.1 Aborts and Retries  
+ For each workload, for both protocols, OCC and Conservative 2PL,  specify what percentage of 
+transactions had to be retried since either validation failed or locks were not available. Plot the 
+number of such failures as a function of contention levels.  
+6.2 Throughput 
+Throughput = committed transactions per second. 
+You must include: 
+●  At least three graphs per workload 
+●  Each graph must compare OCC vs Conservative 2PL 
+Required plots: 
+●  Throughput vs. number of threads (at fixed contention) 
+●  Throughput vs. contention (at fixed number of threads) 
+You may add more plots as needed. 
+
+6.3 Average Response Time 
+Response time = average transaction completion time (start → commit/abort). 
+You must include: 
+●  At least three graphs per workload 
+●  Each graph must compare OCC vs Conservative 2PL 
+Required plots: 
+●  Response time vs. number of threads 
+●  Response time vs. contention 
+●  Response time distribution for each transaction of the workload
